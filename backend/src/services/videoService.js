@@ -1,15 +1,11 @@
-import { spawn } from 'child_process';
+import youtubedl from 'youtube-dl-exec';
 import fs from 'fs';
-import path from 'path';
+
 import ffmpegPath from 'ffmpeg-static';
 import { sanitizeUrl } from '@braintree/sanitize-url';
 import { getPlatform } from '../utils/platform.js';
 
-const YT_DLP_BINARY =
-  process.env.YTDLP_BINARY ||
-  (process.platform === 'win32'
-    ? path.join(process.cwd(), 'yt-dlp.exe')
-    : 'yt-dlp');
+
 const INSTAGRAM_COOKIES_PATH = process.env.INSTAGRAM_COOKIES_PATH ? path.resolve(process.env.INSTAGRAM_COOKIES_PATH) : undefined;
 const HAS_INSTAGRAM_COOKIES = INSTAGRAM_COOKIES_PATH ? fs.existsSync(INSTAGRAM_COOKIES_PATH) : false;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -59,40 +55,48 @@ function isTemporaryYtdlpError(message) {
   return ['http error', 'download error', 'unable to download', 'timeout', 'timed out', 'connection'].some((item) => normalized.includes(item));
 }
 
-function runYtDlp(args) {
+async function runYtDlp(args) {
   let attempts = 0;
-  return new Promise((resolve, reject) => {
-    const execute = () => {
-      attempts += 1;
-      
-      const proc = spawn(YT_DLP_BINARY, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+
+  while (attempts < MAX_YTDLP_ATTEMPTS) {
+    attempts++;
+
+    try {
+      const subprocess = youtubedl.exec('', args);
+
       let stdout = '';
       let stderr = '';
-      proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-      proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-      proc.on('error', (err) => {
-  if (err.code === 'ENOENT') {
-    reject(new Error('yt-dlp is not installed on this server.'));
-    return;
-  }
 
-  reject(new Error(`Failed to start yt-dlp: ${err.message}`));
-});
-      proc.on('close', (code) => {
-        const errorMessage = stderr.trim();
-        if (code === 0) {
-          resolve(stdout);
-          return;
-        }
-        if (attempts < MAX_YTDLP_ATTEMPTS && isTemporaryYtdlpError(errorMessage)) {
-          setTimeout(execute, attempts * 1000);
-          return;
-        }
-        reject(new Error(`yt-dlp exited with code ${code ?? 'unknown'}: ${errorMessage}`));
+      subprocess.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
       });
-    };
-    execute();
-  });
+
+      subprocess.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+
+      const exitCode = await subprocess;
+
+      if (exitCode === 0 || stdout.length > 0) {
+        return stdout;
+      }
+
+      throw new Error(stderr);
+
+    } catch (err) {
+      const message = err?.message || String(err);
+
+      if (
+        attempts < MAX_YTDLP_ATTEMPTS &&
+        isTemporaryYtdlpError(message)
+      ) {
+        await new Promise((r) => setTimeout(r, attempts * 1000));
+        continue;
+      }
+
+      throw new Error(message);
+    }
+  }
 }
 
 function formatContentType(ext) {
@@ -125,8 +129,25 @@ export async function analyzeVideo(url) {
   const normalizedUrl = normalizeUrl(url);
   if (!normalizedUrl) throw new Error('Invalid URL provided.');
   const platform = getPlatform(normalizedUrl);
-  const raw = await runYtDlp(getYtdlpArgs(normalizedUrl));
-  const data = JSON.parse(raw);
+  const data = await youtubedl(normalizedUrl, {
+  dumpSingleJson: true,
+  noPlaylist: true,
+  noWarnings: true,
+  extractorRetries: 3,
+  socketTimeout: 30,
+  ignoreConfig: true,
+  noCallHome: true,
+  preferFreeFormats: true,
+  noProgress: true,
+  geoBypass: true,
+  addHeader: [
+    `Referer:${getReferer(normalizedUrl)}`,
+    `User-Agent:${USER_AGENT}`,
+  ],
+  ...(HAS_INSTAGRAM_COOKIES && INSTAGRAM_COOKIES_PATH
+    ? { cookies: INSTAGRAM_COOKIES_PATH }
+    : {}),
+});
   const formats = Array.isArray(data.formats) ? data.formats : [];
   const previewFormat = choosePreviewFormat(formats);
   const preview = getPreviewData(previewFormat);
@@ -176,11 +197,44 @@ export async function analyzeVideo(url) {
 
 export function spawnDownload(url, formatId, type) {
   const normalizedUrl = normalizeUrl(url);
-  if (!normalizedUrl) throw new Error('Invalid download URL');
-  const commonArgs = ['--no-playlist', '--socket-timeout', '30', '--ignore-config', '--no-call-home', ...getCommonHeaders(normalizedUrl)];
-  if (HAS_INSTAGRAM_COOKIES && INSTAGRAM_COOKIES_PATH) {
-    commonArgs.push('--cookies', INSTAGRAM_COOKIES_PATH);
+
+  if (!normalizedUrl) {
+    throw new Error('Invalid download URL');
   }
-  const args = type === 'audio' ? ['-f', formatId || 'bestaudio', '-x', '--audio-format', 'mp3', '--audio-quality', '0', '--ffmpeg-location', ffmpegPath || '', '-o', '-', ...commonArgs, normalizedUrl] : ['-f', formatId || 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--ffmpeg-location', ffmpegPath || '', '-o', '-', ...commonArgs, normalizedUrl];
-  return spawn(YT_DLP_BINARY, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+
+  const commonFlags = {
+    noPlaylist: true,
+    socketTimeout: 30,
+    ignoreConfig: true,
+    noCallHome: true,
+    addHeader: [
+      `Referer:${getReferer(normalizedUrl)}`,
+      `User-Agent:${USER_AGENT}`,
+    ],
+  };
+
+  if (HAS_INSTAGRAM_COOKIES && INSTAGRAM_COOKIES_PATH) {
+    commonFlags.cookies = INSTAGRAM_COOKIES_PATH;
+  }
+
+  const flags =
+    type === 'audio'
+      ? {
+          ...commonFlags,
+          format: formatId || 'bestaudio',
+          extractAudio: true,
+          audioFormat: 'mp3',
+          audioQuality: 0,
+          ffmpegLocation: ffmpegPath || '',
+          output: '-',
+        }
+      : {
+          ...commonFlags,
+          format: formatId || 'bestvideo+bestaudio/best',
+          mergeOutputFormat: 'mp4',
+          ffmpegLocation: ffmpegPath || '',
+          output: '-',
+        };
+
+  return youtubedl.exec(normalizedUrl, flags);
 }

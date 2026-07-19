@@ -11,7 +11,14 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet());
-app.use(cors({ origin: [env.frontendOrigin, 'http://localhost:5173', 'http://localhost:3000'], credentials: true }));
+app.use(cors({
+  origin: [
+    "https://vidsnap-git-main-ayu-sh.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000"
+  ],
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
 

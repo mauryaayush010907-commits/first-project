@@ -55,7 +55,7 @@ function VideoQualityCard({ q, url, videoTitle }: { q: QualityOption; url: strin
       });
 
       const link = document.createElement("a");
-      link.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/download?${params.toString()}`;
+      link.href = `${process.env.NEXT_PUBLIC_API_URL || "https://first-project-dag3.onrender.com"}/api/download?${params.toString()}`;
       link.download = `${videoTitle}.mp4`;
       link.style.display = "none";
       document.body.appendChild(link);
@@ -212,7 +212,7 @@ function AudioCard({ a, url, videoTitle }: { a: AudioOption; url: string; videoT
       });
 
       const link = document.createElement("a");
-      link.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/download?${params.toString()}`;
+      link.href = `${process.env.NEXT_PUBLIC_API_URL || "https://first-project-dag3.onrender.com"}/api/download?${params.toString()}`;
       link.download = `${videoTitle}.mp3`;
       link.style.display = "none";
       document.body.appendChild(link);
@@ -392,7 +392,7 @@ export default function QualityGrid({ info, url }: Props) {
                 {info.qualities[0].quality} {info.qualities[0].fps ? `@ ${info.qualities[0].fps}fps` : ""}
               </div>
               <a
-                href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/download?url=${encodeURIComponent(url)}&formatId=${encodeURIComponent(info.qualities[0].formatId)}&type=video&filename=${encodeURIComponent(info.title)}`}
+                href={`${process.env.NEXT_PUBLIC_API_URL || "https://first-project-dag3.onrender.com"}/api/download?url=${encodeURIComponent(url)}&formatId=${encodeURIComponent(info.qualities[0].formatId)}&type=video&filename=${encodeURIComponent(info.title)}`}
                 download={`${info.title}.mp4`}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 hover:shadow-md glow-btn"
               >

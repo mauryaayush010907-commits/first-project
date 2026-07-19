@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://first-project-dag3.onrender.com";
 
 export async function analyzeVideo(url: string) {
   const response = await fetch(`${API_BASE_URL}/api/analyze`, {

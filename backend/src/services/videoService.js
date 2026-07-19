@@ -5,7 +5,11 @@ import ffmpegPath from 'ffmpeg-static';
 import { sanitizeUrl } from '@braintree/sanitize-url';
 import { getPlatform } from '../utils/platform.js';
 
-const YT_DLP_BINARY = process.env.YTDLP_BINARY || path.join(process.cwd(), 'yt-dlp.exe');
+const YT_DLP_BINARY =
+  process.env.YTDLP_BINARY ||
+  (process.platform === 'win32'
+    ? path.join(process.cwd(), 'yt-dlp.exe')
+    : 'yt-dlp');
 const INSTAGRAM_COOKIES_PATH = process.env.INSTAGRAM_COOKIES_PATH ? path.resolve(process.env.INSTAGRAM_COOKIES_PATH) : undefined;
 const HAS_INSTAGRAM_COOKIES = INSTAGRAM_COOKIES_PATH ? fs.existsSync(INSTAGRAM_COOKIES_PATH) : false;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -60,16 +64,20 @@ function runYtDlp(args) {
   return new Promise((resolve, reject) => {
     const execute = () => {
       attempts += 1;
-      if (!fs.existsSync(YT_DLP_BINARY)) {
-        reject(new Error(`yt-dlp binary not found at ${YT_DLP_BINARY}`));
-        return;
-      }
+      
       const proc = spawn(YT_DLP_BINARY, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '';
       let stderr = '';
       proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
       proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-      proc.on('error', (err) => reject(new Error(`Failed to start yt-dlp: ${err.message}`)));
+      proc.on('error', (err) => {
+  if (err.code === 'ENOENT') {
+    reject(new Error('yt-dlp is not installed on this server.'));
+    return;
+  }
+
+  reject(new Error(`Failed to start yt-dlp: ${err.message}`));
+});
       proc.on('close', (code) => {
         const errorMessage = stderr.trim();
         if (code === 0) {

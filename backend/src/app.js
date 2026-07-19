@@ -8,6 +8,8 @@ import contactRoutes from './routes/contactRoutes.js';
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors({ origin: [env.frontendOrigin, 'http://localhost:5173', 'http://localhost:3000'], credentials: true }));
 app.use(express.json({ limit: '10mb' }));

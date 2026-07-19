@@ -1,13 +1,22 @@
 import youtubedl from 'youtube-dl-exec';
 import fs from 'fs';
-
+import path from 'path';
 import ffmpegPath from 'ffmpeg-static';
 import { sanitizeUrl } from '@braintree/sanitize-url';
 import { getPlatform } from '../utils/platform.js';
 
 
-const INSTAGRAM_COOKIES_PATH = process.env.INSTAGRAM_COOKIES_PATH ? path.resolve(process.env.INSTAGRAM_COOKIES_PATH) : undefined;
-const HAS_INSTAGRAM_COOKIES = INSTAGRAM_COOKIES_PATH ? fs.existsSync(INSTAGRAM_COOKIES_PATH) : false;
+const COOKIES_PATH = process.env.COOKIES_PATH
+  ? path.resolve(process.env.COOKIES_PATH)
+  : undefined;
+
+const HAS_COOKIES = COOKIES_PATH
+  ? fs.existsSync(COOKIES_PATH)
+  : false;
+
+  console.log("COOKIES_PATH:", COOKIES_PATH);
+console.log("HAS_COOKIES:", HAS_COOKIES);
+
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const MAX_YTDLP_ATTEMPTS = 3;
 
@@ -42,10 +51,10 @@ function getCommonHeaders(url) {
 }
 
 function getYtdlpArgs(url) {
-  const args = ['--dump-single-json', '--no-playlist', '--no-warnings', '--extractor-retries', '3', '--socket-timeout', '30', '--ignore-config', '--no-call-home', '--prefer-free-formats', '--no-progress', '--geo-bypass', ...getCommonHeaders(url)];
-  if (HAS_INSTAGRAM_COOKIES && INSTAGRAM_COOKIES_PATH) {
-    args.push('--cookies', INSTAGRAM_COOKIES_PATH);
-  }
+  const args = ['--dump-single-json', '--no-playlist', '--no-warnings', '--extractor-retries', '3', '--socket-timeout', '30', '--ignore-config',  '--prefer-free-formats', '--no-progress', '--geo-bypass', ...getCommonHeaders(url)];
+  if (HAS_COOKIES && COOKIES_PATH) {
+    args.push('--cookies', COOKIES_PATH);
+}
   args.push(url);
   return args;
 }
@@ -136,7 +145,7 @@ export async function analyzeVideo(url) {
   extractorRetries: 3,
   socketTimeout: 30,
   ignoreConfig: true,
-  noCallHome: true,
+ 
   preferFreeFormats: true,
   noProgress: true,
   geoBypass: true,
@@ -144,8 +153,8 @@ export async function analyzeVideo(url) {
     `Referer:${getReferer(normalizedUrl)}`,
     `User-Agent:${USER_AGENT}`,
   ],
-  ...(HAS_INSTAGRAM_COOKIES && INSTAGRAM_COOKIES_PATH
-    ? { cookies: INSTAGRAM_COOKIES_PATH }
+  ...(HAS_COOKIES
+    ? { cookies: COOKIES_PATH }
     : {}),
 });
   const formats = Array.isArray(data.formats) ? data.formats : [];
@@ -191,7 +200,7 @@ export async function analyzeVideo(url) {
     qualities,
     audioOnly,
     isPrivate: Boolean(data.is_private || data.private),
-    cookiesRequired: platform === 'instagram' && /\/stories\//i.test(normalizedUrl) && !HAS_INSTAGRAM_COOKIES,
+    cookiesRequired: !HAS_COOKIES,
   };
 }
 
@@ -206,17 +215,16 @@ export function spawnDownload(url, formatId, type) {
     noPlaylist: true,
     socketTimeout: 30,
     ignoreConfig: true,
-    noCallHome: true,
+  
     addHeader: [
       `Referer:${getReferer(normalizedUrl)}`,
       `User-Agent:${USER_AGENT}`,
     ],
   };
 
-  if (HAS_INSTAGRAM_COOKIES && INSTAGRAM_COOKIES_PATH) {
-    commonFlags.cookies = INSTAGRAM_COOKIES_PATH;
-  }
-
+ if (HAS_COOKIES) {
+    commonFlags.cookies = COOKIES_PATH;
+}
   const flags =
     type === 'audio'
       ? {
